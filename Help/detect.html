@@ -1,0 +1,109 @@
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+<title>Cone Detection Utility</title>
+<style>
+BODY {
+  FONT-FAMILY: Verdana, Arial, sans-serif;
+}
+div {
+	margin: 4px 0px 4px 8px;
+}
+td, th {
+	text-align: left;
+	padding: 2px 12px 2px 16px;
+	border-bottom: 1px solid #E0E0E0;
+}
+h4 {
+	color: #000055;
+}
+th {
+	color: #555555;
+}
+thead th {
+	background-color: #E0E0E0;
+}
+</style>
+</head>
+<body>
+    <table border="0" width="100%" style="background-color:#EEEEEE;">
+        <tr>
+            <td width="120" style="text-align:center; vertical-align:middle;"><img src="DetectIcon.png"></td>
+            <td style="text-align:left"><h3>Cone Detection Utility</h3></td>
+        </tr>
+    </table>
+
+    <div style="text-align:right;">
+        <a href="https://nei.nih.gov/intramural/translational-imaging">Tam lab</a>&nbsp;<br />
+        <a href="https://nei.nih.gov/">National Eye Institute</a>&nbsp;<br />
+        <a href="https://www.nih.gov/">National Institutes of Health</a>&nbsp;<br />
+    </div>
+    <div style="color:#000088;">
+        If any portion of this software is used, please cite the following paper in your publication:
+    </div>
+    <div>
+        <b>Jianfei Liu, HaeWon Jung, Alfredo Dubra, and Johnny Tam</b>, 
+        "Automated Photoreceptor Cell Identification on Nonconfocal Adaptive Optics Images
+        Using Multiscale Circular Voting," <i>Investigative Ophthalmology & Visual Science</i>,
+        58(11): 4477 - 4489, 2017
+    </div>
+
+    <h4 style="text-align:center;">Keyboard Shortcuts</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Action</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><b>Ctrl+O</b></td>
+                <td>Open</td>
+                <td>Open a Split Image (.tif, .tiff). You can open multiple images at once.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+D</b></td>
+                <td>Detect</td>
+                <td>Display Cone Detection dialog. On this dialog you can adjust detection parameters, then chose to detect cones either on the current image, or on all open images.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+S</b></td>
+                <td>Save</td>
+                <td>Save detection results of the current image.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+A</b></td>
+                <td>Save All</td>
+                <td>Save detection results of all open images.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+B</b></td>
+                <td>Adjust</td>
+                <td>Switch to &ldquo;Ajust&rdquo; mouse mode. In this mode, you can adjust brightness and contrast of the image by dragging the mouse.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+M</b></td>
+                <td>Mark</td>
+                <td>Switch to &ldquo;Mark Cones&rdquo; mouse mode. In this mode, clicking on the image will add a cone glyph to the detection results.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+E</b></td>
+                <td>Erase</td>
+                <td>Switch to &ldquo;Erase Cones&rdquo; mouse mode. In this mode, clicking on a cone glyph will remove it from the detection results.</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Z</b></td>
+                <td>Undo</td>
+                <td>Undo the last &ldquo;Mark&rdquo; or &ldquo;Erase&rdquo; operation.</td>
+            </tr>
+            <tr>
+                <td><b>F1</b></td>
+                <td>Help</td>
+                <td>Display this help screen.</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>
