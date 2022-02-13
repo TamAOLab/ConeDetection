@@ -57,12 +57,45 @@ class radMouseInteractorStylePP : public vtkInteractorStyleImage
 {
 private:
 	DoublePointArray2D contour_pts;
+	bool LeftMousedPressed;
+	bool ShiftDown, MouseScroll;
+	bool MouseIn;
+
+	int img_dims[3];
+	int last_pick_value;
+	int m_idx;
+	double m_xpos, m_ypos;
+
+	void add_contour_pt(double picked[3]);
+	void closest_border(double picked[3], DoublePointType2D pt, int* pidx = NULL);
+	void closest_border_2(double picked[3], DoublePointType2D pt);
 
   public:
     static radMouseInteractorStylePP* New();
     vtkTypeMacro(radMouseInteractorStylePP, vtkInteractorStyleImage);
  
-    void OnLeftButtonDown() override;
+	radMouseInteractorStylePP()
+	{
+		LeftMousedPressed = false;
+		ShiftDown = false;
+		MouseScroll = false;
+		MouseIn = false;
+		m_idx = -1;
+		last_pick_value = 0;
+		m_xpos = m_ypos = 0;
+		img_dims[0] = img_dims[1] = img_dims[2] = 0;
+	}
+
+	virtual void OnChar() override;
+	virtual void OnKeyDown() override;
+	virtual void OnKeyUp() override;
+	virtual void OnEnter() override;
+	virtual void OnLeave() override;
+	virtual void OnLeftButtonDown() override;
+	virtual void OnMouseMove() override;
+	virtual void OnLeftButtonUp() override;
+	virtual void OnMiddleButtonDown() override;
+	virtual void OnMiddleButtonUp() override;
 };
 
 
@@ -72,10 +105,13 @@ const double ResultColor[3] = {0.0/255.0, 255.0/255.0, 0.0/255.0};
 const double FalsePositiveColor[3] = {253.0/255.0, 174.0/255.0, 97.0/255.0};
 const double FalseNegativeColor[3] = {255.0/255.0, 255.0/255.0, 51.0/255.0};
 
+const double SmallDisplacement = -0.01;
+
 struct UndoEntry {
-UndoEntry(bool del, double x, double y) :
-	m_del(del), m_x(x), m_y(y) {}
+UndoEntry(bool del, double x, double y, bool more=false) :
+	m_del(del), m_x(x), m_y(y), m_more(more) {}
 	bool m_del;
+	bool m_more;
 	double m_x;
 	double m_y;
 };
@@ -85,10 +121,21 @@ class radImageView
 private:
 	
 	bool ImageAddFlag;
-	
+	bool interpolationFlag;
+
+	// Closest distance between two markers
+	double closedist = 3.;
+
 	vtkSmartPointer<vtkImageData> ImageData;
 	vtkSmartPointer<vtkImageActor> ImageActor;
 	void DrawInputImage();
+	
+	vtkSmartPointer<vtkPoints> InteractiveContourPoints;
+	vtkSmartPointer<vtkCellArray> InteractiveContourCells;
+	vtkSmartPointer<vtkPolyData> InteractiveContourPolydata;
+	vtkSmartPointer<vtkPolyDataMapper> InteractiveContourMapper;
+	vtkSmartPointer<vtkActor> InteractiveContourActor;
+	void DrawInteractiveContours();
 
 	vtkSmartPointer<vtkPoints> ConePoints;
 	vtkSmartPointer<vtkPolyData> ConePolydata;
@@ -109,26 +156,44 @@ public:
 	
 	radImageView();
 	~radImageView();
+
+	void GetImageDimensions(int dims[3]) {
+		ImageData->GetDimensions(dims);
+	}
     
 	void ResetView(bool camera_flag = true); //used for initialization
 
 	vtkSmartPointer<vtkRenderWindow> GetRenderWin() {return RenderWin;}
 
 	void SetSplitImage(FloatImageType2D::Pointer);
+	void SetColorInfo(ColorInfo ci);
+	ColorInfo GetColorInfo();
 
 	void SetConePoints(DoublePointArray2D &, vector<float> &, vector<float> &, 
 		DoublePointArray2D &, vector<float> &, vector<float> &, 
 		vector< pair<unsigned int, unsigned int> > &, DoublePointArray2D &);
 	void GetConePoints(DoublePointArray2D &);
 	void InitializeView();
+	void InitializeFeatures();
 	void SetConeGlyphVisibility(bool);
 	void SetGlyphScale(double);
+	bool GetInterpolation() { return interpolationFlag; }
+	void SetInterpolation(bool flag);
 	
+	int GetFeatureCount() {
+		return ConePoints->GetNumberOfPoints();
+	}
+	int FindMarker(double* pxpos, double* pypos);
+	void UpdateMarkerAt(int idx, double xpos, double ypos);
 	void RemoveDetectedFeatures(double, double, double);
+	void EraseAreaMarkers(DoublePointArray2D &);
 	void AddDetectedFeatures(double, double, double);
-	void AddUndoEntry(bool, double, double);
+	void AddUndoEntry(bool del, double x, double y, bool more=false);
+	void AddMoveUndoEntry(int idx, double x, double y);
 	void DoUndo();
 	deque< UndoEntry > undoStack;
+
+	void SetInteractiveContours(DoublePointArray2D &, bool ending_flag = false);
 };
 
 #endif // radImageView_H

@@ -63,6 +63,7 @@ enum FeatureType
     DarkLE   = 0x0020
 };
 
+enum class MouseOperation { Normal, Add_Point, Move_Point, Delete_Point, Delete_Area };
 enum { Background = 0, Foreground = 255 };
 enum NeighborhoodType { Four = 4, Eight = 8 };
 
@@ -105,6 +106,16 @@ const unsigned int PARA_ClustingRadius = 1;
 const unsigned int PARA_MergeRadius = 7;
 const double PARA_LOGScale = 0.5;
 
+struct ColorInfo
+{
+	double color_level;
+	double color_window;
+	void reset() {
+		color_level = 127.5;
+		color_window = 255.;
+	}
+};
+
 struct SplitImageInformation
 {
 	std::pair<FloatImageType2D::Pointer, FloatImageType2D::Pointer> split_images;
@@ -115,6 +126,7 @@ struct SplitImageInformation
 	vector< pair<unsigned int, unsigned int> > split_detection_links;
 	DoublePointArray2D split_final_detections;
 	DoublePointArray2D split_edited_detections;
+	ColorInfo color_info;
 
 	void Initialize(bool flag)
 	{

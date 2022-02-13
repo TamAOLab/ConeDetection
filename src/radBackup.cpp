@@ -29,23 +29,23 @@ radBackup::~radBackup()
 bool radBackup::ReadTxtFile(const char *filename, vector<string> & str_list, vector<string> & str_list1)
 {
 	string line;
-	ifstream myfile(filename);
-
-	if (myfile.is_open())
-	{
-		while ( getline (myfile,line) )
-		{
-			if (!line.empty() && line[0] != '#' && line.find("Created time") == string::npos)
-				str_list.push_back(line);
-			else if (!line.empty() && line[0] == '#')
-				str_list1.push_back(line);
-
-		}
-		myfile.close();
-		return true;
-	}
-	else
+	QString qfn(filename);
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::ReadOnly | QIODevice::Text)) {
 		return false;
+	}
+	// std::cout << "Reading: " << filename << std::endl;
+	QTextStream myfile(&qf);
+
+	while (!myfile.atEnd()) {
+		QString qline = myfile.readLine();
+		line = qline.toStdString();
+		if (!line.empty() && line[0] != '#' && line.find("Created time") == string::npos)
+			str_list.push_back(line);
+		else if (!line.empty() && line[0] == '#')
+			str_list1.push_back(line);
+	}
+	return true;
 }
 
 template <class T>
@@ -82,13 +82,14 @@ void radBackup::ExtractNumsFromString(string &record, vector<T> &arr, int data_t
     arr.push_back(atof(value_str.c_str()));
 }
 
-void radBackup::ReadSplitBackup(SplitImageInformation & split_infor, ConeDetectionParameters & detection_paras, int skip_features)
+bool radBackup::ReadSplitBackup(SplitImageInformation & split_infor, ConeDetectionParameters & detection_paras, int skip_features)
 {
 
 	//get all sub-directories
 	QDirIterator it(BackupDir.c_str(), QDir::Dirs | QDir::NoSymLinks | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
 	vector<string> str_list, str_list1;
 	string img_file_path;
+	bool backup_found = false;
 	while (it.hasNext()) 
 	{
 		str_list.clear();
@@ -98,6 +99,8 @@ void radBackup::ReadSplitBackup(SplitImageInformation & split_infor, ConeDetecti
 		{
 			if (str_list[0].compare(split_infor.split_files.first) != 0)
 				continue;
+
+			backup_found = true;
 
 			if (!skip_features)
 				ReadSplitFeatures(str_list[2].c_str(), split_infor.split_left_detections, split_infor.split_right_detections, 
@@ -126,6 +129,7 @@ void radBackup::ReadSplitBackup(SplitImageInformation & split_infor, ConeDetecti
 			}
 		}
 	}
+	return backup_found;
 }
 
 bool radBackup::RemoveDir(const QString & dirName)
@@ -162,32 +166,35 @@ void radBackup::WriteSplitFeatures(const char * filename, DoublePointArray2D & l
 								   vector< float > & right_weights, vector< pair<unsigned int, unsigned int> > & detection_links,
 								   DoublePointArray2D & final_detections, DoublePointArray2D & edited_detections)
 {
-	ofstream myfile;
+	QString qfn(filename);
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		return;
+	}
+	QTextStream myfile(&qf);
 
-	myfile.open(filename);
 	for (unsigned int i=0; i<left_detections.size(); i++)
 	{
 		myfile << "left_detections:" << left_detections[i][0] << "," << left_detections[i][1] << "," 
-			<< left_scales[i] << "," << left_weights[i] << std::endl;
+			<< left_scales[i] << "," << left_weights[i] << "\n";
 	}
 	for (unsigned int i=0; i<right_detections.size(); i++)
 	{
 		myfile << "right_detections:" << right_detections[i][0] << "," << right_detections[i][1] << "," 
-			<< right_scales[i] << "," << right_weights[i] << std::endl;
+			<< right_scales[i] << "," << right_weights[i] << "\n";
 	}
 	for (unsigned int i=0; i<detection_links.size(); i++)
 	{
-		myfile << "detection_links:" << detection_links[i].first << "," << detection_links[i].second << std::endl;
+		myfile << "detection_links:" << detection_links[i].first << "," << detection_links[i].second << "\n";
 	}
 	for (unsigned int i = 0; i < final_detections.size(); i++)
 	{
-		myfile << "final_detections:" << final_detections[i][0] << "," << final_detections[i][1] << std::endl;
+		myfile << "final_detections:" << final_detections[i][0] << "," << final_detections[i][1] << "\n";
 	}
 	for (unsigned int i = 0; i < edited_detections.size(); i++)
 	{
-		myfile << "edited_detections:" << edited_detections[i][0] << "," << edited_detections[i][1] << std::endl;
+		myfile << "edited_detections:" << edited_detections[i][0] << "," << edited_detections[i][1] << "\n";
 	}
-	myfile.close();
 }
 
 void radBackup::ExtractSplitParameters(string & input_str, ConeDetectionParameters & detection_paras)
@@ -219,7 +226,14 @@ void radBackup::ReadSplitFeatures(const char *filename, DoublePointArray2D & lef
 								   DoublePointArray2D & final_detections, DoublePointArray2D & edited_detections)
 {
 	string line, tmp_str, label_str;
-	ifstream myfile(filename);
+	QString qfn(filename);
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return;
+	}
+	// std::cout << "Reading: " << filename << std::endl;
+	QTextStream myfile(&qf);
+
 	vector<float> tmp_array;
 	vector<unsigned int> tmp_array1;
 
@@ -233,101 +247,98 @@ void radBackup::ReadSplitFeatures(const char *filename, DoublePointArray2D & lef
 	final_detections.clear();
 	edited_detections.clear();
 
-	if (myfile.is_open())
-	{
-		while ( getline (myfile,line) )
+	while (!myfile.atEnd()) {
+		QString qline = myfile.readLine();
+		line = qline.toStdString();
+
+		if (!line.empty() && line[0] != '#')
 		{
-			if (!line.empty() && line[0] != '#')
+			size_t pos = line.find(":");
+			if (pos == string::npos)
+				continue;
+
+			label_str.assign(line.begin(), line.begin()+pos);
+			tmp_str.assign(line.begin()+pos+1, line.end());
+
+			DoublePointType2D ft;
+			float scale;
+			float weight;
+
+			tmp_array.clear();
+			tmp_array1.clear();
+
+			if (label_str.compare("left_detections") == 0)
 			{
-				size_t pos = line.find(":");
-				if (pos == string::npos)
-					continue;
+				ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
+				ft[0] = tmp_array[0];
+				ft[1] = tmp_array[1];
+				scale = tmp_array[2];
+				weight= tmp_array[3];
 
-				label_str.assign(line.begin(), line.begin()+pos);
-				tmp_str.assign(line.begin()+pos+1, line.end());
+				left_detections.push_back(ft);
+				left_scales.push_back(scale);
+				left_weights.push_back(weight);
+			}
+			else if (label_str.compare("right_detections") == 0)
+			{
+				ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
+				ft[0] = tmp_array[0];
+				ft[1] = tmp_array[1];
+				scale = tmp_array[2];
+				weight= tmp_array[3];
 
-				DoublePointType2D ft;
-				float scale;
-				float weight;
+				right_detections.push_back(ft);
+				right_scales.push_back(scale);
+				right_weights.push_back(weight);
+			}
+			else if (label_str.compare("detection_links") == 0)
+			{
+				std::pair<unsigned int, unsigned int> tmp_pair;
+				ExtractNumsFromString<unsigned int>(tmp_str, tmp_array1, 2);
+				tmp_pair.first = tmp_array1[0];
+				tmp_pair.second = tmp_array1[1];
 
-				tmp_array.clear();
-				tmp_array1.clear();
-
-				if (label_str.compare("left_detections") == 0)
-				{
-					ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
-					ft[0] = tmp_array[0];
-					ft[1] = tmp_array[1];
-					scale = tmp_array[2];
-					weight= tmp_array[3];
-
-					left_detections.push_back(ft);
-					left_scales.push_back(scale);
-					left_weights.push_back(weight);
-				}
-				else if (label_str.compare("right_detections") == 0)
-				{
-					ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
-					ft[0] = tmp_array[0];
-					ft[1] = tmp_array[1];
-					scale = tmp_array[2];
-					weight= tmp_array[3];
-
-					right_detections.push_back(ft);
-					right_scales.push_back(scale);
-					right_weights.push_back(weight);
-				}
-				else if (label_str.compare("detection_links") == 0)
-				{
-					std::pair<unsigned int, unsigned int> tmp_pair;
-					ExtractNumsFromString<unsigned int>(tmp_str, tmp_array1, 2);
-					tmp_pair.first = tmp_array1[0];
-					tmp_pair.second = tmp_array1[1];
-
-					detection_links.push_back(tmp_pair);
-				}
-				else if (label_str.compare("final_detections") == 0)
-				{
-					ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
-					ft[0] = tmp_array[0];
-					ft[1] = tmp_array[1];
-					final_detections.push_back(ft);
-				}
-				else if (label_str.compare("edited_detections") == 0)
-				{
-					ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
-					ft[0] = tmp_array[0];
-					ft[1] = tmp_array[1];
-					edited_detections.push_back(ft);
-				}
+				detection_links.push_back(tmp_pair);
+			}
+			else if (label_str.compare("final_detections") == 0)
+			{
+				ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
+				ft[0] = tmp_array[0];
+				ft[1] = tmp_array[1];
+				final_detections.push_back(ft);
+			}
+			else if (label_str.compare("edited_detections") == 0)
+			{
+				ExtractNumsFromString<float>(tmp_str, tmp_array, 1);
+				ft[0] = tmp_array[0];
+				ft[1] = tmp_array[1];
+				edited_detections.push_back(ft);
 			}
 		}
-		myfile.close();
-		if (0 == edited_detections.size())
-			edited_detections = final_detections;
 	}
+	if (0 == edited_detections.size())
+		edited_detections = final_detections;
 }
 
 bool radBackup::IsRecordExisted(string & file_name, string & searched_str)
 {
 	string line;
-	ifstream myfile(file_name.c_str());
 
-	if (myfile.is_open())
-	{
-		while ( getline (myfile,line) )
-		{
-			if (line.compare(searched_str) == 0)
-			{
-				myfile.close();
-				return true;
-			}
-		}
-		myfile.close();
+	QString qfn(file_name.c_str());
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::ReadOnly | QIODevice::Text)) {
 		return false;
 	}
-	else 
-		return false;
+	// std::cout << "Reading: " << file_name << std::endl;
+	QTextStream myfile(&qf);
+
+	while (!myfile.atEnd()) {
+		QString qline = myfile.readLine();
+		line = qline.toStdString();
+		if (line.compare(searched_str) == 0)
+			return true;
+	}
+	return false;
 }
 
 bool radBackup::IsDiretoryExisted(pair<string, string> & dir_names)
@@ -450,9 +461,14 @@ void radBackup::WriteBackupResults(SplitImageInformation & split_info,
 	if (features_only) return;
 
 	filename.assign(file_dir + "/" + split_info.split_files.second + ".txt");
+	// std::cout << filename << std::endl;
 
-	ofstream myfile;
-	myfile.open(filename.c_str());
+	QString qfn(filename.c_str());
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		return;
+	}
+	QTextStream myfile(&qf);
 
 	//recording time
 	time_t rawtime;
@@ -464,19 +480,17 @@ void radBackup::WriteBackupResults(SplitImageInformation & split_info,
 	char *ctime_buf = ctime(&rawtime);
 #endif
 
-	myfile << "Created time: " << ctime_buf << std::endl;
+	myfile << "Created time: " << ctime_buf << "\n";
 	if (split_info.split_edited_detections.size() > 0) {
-		myfile << "##VotingRadius: " << detection_paras.VotingRadius << std::endl;
-		myfile << "##GradientMagnitudeThreshold: " << detection_paras.GradientMagnitudeThreshold << std::endl;
-		myfile << "##Scale: " << detection_paras.Scale << std::endl;
-		myfile << "##DimConeDetectionFlag: " << int(detection_paras.DimConeDetectionFlag) << std::endl;
-		myfile << "##LOGResponse: " << detection_paras.LOGResponse << std::endl;
+		myfile << "##VotingRadius: " << detection_paras.VotingRadius << "\n";
+		myfile << "##GradientMagnitudeThreshold: " << detection_paras.GradientMagnitudeThreshold << "\n";
+		myfile << "##Scale: " << detection_paras.Scale << "\n";
+		myfile << "##DimConeDetectionFlag: " << int(detection_paras.DimConeDetectionFlag) << "\n";
+		myfile << "##LOGResponse: " << detection_paras.LOGResponse << "\n";
 	}
 
-	myfile << split_info.split_files.first << std::endl;
-	myfile << split_info.split_files.second << std::endl;
+	myfile << split_info.split_files.first.c_str() << "\n";
+	myfile << split_info.split_files.second.c_str() << "\n";
 
-	myfile << filename1 << std::endl;
-
-	myfile.close();
+	myfile << filename1.c_str() << "\n";
 }

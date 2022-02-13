@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <QtGlobal>
 #if QT_VERSION >= 0x050000
 #include <QMenu>
@@ -53,6 +55,17 @@ void decodeFileList(QStringList &inputNames, QStringList &splitFileNames, QStrin
 
 radMainWindow* radMainWindow::TheApp = NULL;
 
+static QString GetListName(std::string &imgpath)
+{
+	QFileInfo qfi(imgpath.c_str());
+	QString basename = qfi.completeBaseName();
+	QFileInfo qcsv(qfi.dir(), basename + QString(".csv"));
+	if (qcsv.exists()) {
+		return QString("\xE2\x88\x9A") + basename;
+	}
+	return QString(" ") + basename;
+}
+
 // Constructor
 radMainWindow::radMainWindow() 
 {
@@ -62,6 +75,7 @@ radMainWindow::radMainWindow()
 	// Handle directories
 	splitHomeDir = QDir(QDir::home().filePath(".ConeDetection"));
 	splitStateFile = QFileInfo(splitHomeDir, QString("state.json"));
+	shortcutFile = QFileInfo(splitHomeDir, QString("shortcuts.json"));
 	QDir historyDir = QDir(splitHomeDir.filePath("History"));
 	// create history directory
 	if (!historyDir.exists())
@@ -72,8 +86,7 @@ radMainWindow::radMainWindow()
 
 	loadDir = saveDir = QDir::current();
 
-	ConeMarkFlag = false;
-	ConeEraseFlag = false;
+	mouseMode = MouseOperation::Normal;
 	
 	ImageView = new radImageView;
 
@@ -99,8 +112,8 @@ radMainWindow::radMainWindow()
 
 	FileIO = new radFileIO;
 	DetectionPanel = new radDetectionPanel(this);
-	connect(DetectionPanel, SIGNAL(launchDetectCurrent()), this, SLOT(DetectCones()));
-	connect(DetectionPanel, SIGNAL(launchDetectAll()), this, SLOT(DetectConesAll()));
+	DetectionPanel->setMinimumSize(screen_width / 5, screen_height / 2);
+	connect(DetectionPanel, SIGNAL(launchDetectChecked(QList<int>)), this, SLOT(DetectConesChecked(QList<int>)));
 
 	setAcceptDrops(true);
 
@@ -151,79 +164,153 @@ void radMainWindow::createActions()
     openSplitImageAct = new QAction(tr("&Open"), this);
 	openSplitImageAct->setIcon(QIcon(":open.png"));
     openSplitImageAct->setShortcuts(QKeySequence::Open);
-	openSplitImageAct->setToolTip(tr("Open Split Image(s) (Ctrl+O)"));
+	openSplitImageAct->setToolTip(tr("Open Split Image(s) [Ctrl+O]"));
     connect(openSplitImageAct, SIGNAL(triggered()), this, SLOT(openSplitImage()));
+
+	actionMap.push_back(ActionEntry("openSplitImage", openSplitImageAct));
 
     loadDetectionAct = new QAction(tr("&Open Detection Results"), this);
     connect(loadDetectionAct, SIGNAL(triggered()), this, SLOT(loadDetection())); 
 	
     saveDetectionAct = new QAction(tr("&Save"), this);
-	saveDetectionAct->setToolTip(tr("Save Current Detection Results (Ctrl+S)"));
+	saveDetectionAct->setToolTip(tr("Save Current Detection Results [Ctrl+S]"));
     saveDetectionAct->setShortcuts(QKeySequence::Save);
 	saveDetectionAct->setIcon(QIcon(":saveas.png"));
     connect(saveDetectionAct, SIGNAL(triggered()), this, SLOT(saveDetection()));
 
+	actionMap.push_back(ActionEntry("saveDetection", saveDetectionAct));
+
 	saveAllDetectionsAct = new QAction(tr("Save All"), this);
-	saveAllDetectionsAct->setToolTip(tr("Save All Detection Results (Ctrl+A)"));
+	saveAllDetectionsAct->setToolTip(tr("Save All Detection Results [Ctrl+A]"));
 	saveAllDetectionsAct->setIcon(QIcon(":saveall.png"));
 	saveAllDetectionsAct->setShortcut(QKeySequence(tr("Ctrl+A")));
 	connect(saveAllDetectionsAct, SIGNAL(triggered()), this, SLOT(saveAllDetections()));
 
-    quitAct = new QAction(tr("&Close"), this);
+	actionMap.push_back(ActionEntry("saveAllDetections", saveAllDetectionsAct));
+
+	quitAct = new QAction(tr("&Close"), this);
     quitAct->setShortcuts(QKeySequence::Quit);
-    quitAct->setToolTip(tr("Close the program (Alt+F4)"));
+    quitAct->setToolTip(tr("Close the program [Alt+F4]"));
     connect(quitAct, SIGNAL(triggered()), this, SLOT(quit()));
 
 	detectConesAct = new QAction(tr("&Detect"), this);
 	detectConesAct->setShortcut(QKeySequence(tr("Ctrl+D")));
 	detectConesAct->setIcon(QIcon(":detect.png"));
-	detectConesAct->setToolTip(tr("Detect Cones (Ctrl+D)"));
+	detectConesAct->setToolTip(tr("Detect Cones [Ctrl+D]"));
     connect(detectConesAct, SIGNAL(triggered()), this, SLOT(showDetectionPanel()));
+
+	actionMap.push_back(ActionEntry("detectCones", detectConesAct));
+
+	deleteAllConesAct = new QAction(tr("Delete All"), this);
+	deleteAllConesAct->setToolTip(tr("Delete All Cone Markers"));
+	connect(deleteAllConesAct, SIGNAL(triggered()), this, SLOT(DeleteAllConeMarkers()));
 
 	purgeHistoryAct = new QAction(tr("Purge History"), this);
 	connect(purgeHistoryAct, SIGNAL(triggered()), this, SLOT(purgeHistoryFiles()));
+
+	setHotkeysAct = new QAction(tr("Keyboard Shortcuts"), this);
+	connect(setHotkeysAct, SIGNAL(triggered()), this, SLOT(selectHotkeys()));
 
 	QActionGroup *drawActionGroup = new QActionGroup(this);
 	mouseAct = new QAction(tr("Adjust"), drawActionGroup);
     mouseAct->setIcon(QIcon(":mouse.png"));
 	mouseAct->setShortcut(QKeySequence(tr("Ctrl+B")));
-    mouseAct->setToolTip(tr("Mouse adjusts brightness/contrast (Ctrl+B)"));
+    mouseAct->setToolTip(tr("Mouse adjusts brightness/contrast [Ctrl+B]"));
 	mouseAct->setCheckable(true);
 	mouseAct->setChecked(true);
     connect(mouseAct, SIGNAL(triggered()), this, SLOT(SetMouseFlag()));
 
+	actionMap.push_back(ActionEntry("adjustBrightness", mouseAct));
+
 	pointAnnotationAct = new QAction(tr("Mark"), drawActionGroup);
     pointAnnotationAct->setIcon(QIcon(":draw_point.png"));
 	pointAnnotationAct->setShortcut(QKeySequence(tr("Ctrl+M")));
-    pointAnnotationAct->setToolTip(tr("Mouse marks cones (Ctrl+M)"));
+    pointAnnotationAct->setToolTip(tr("Mouse click marks a cone [Ctrl+M]"));
 	pointAnnotationAct->setCheckable(true);
 	pointAnnotationAct->setChecked(false);
     connect(pointAnnotationAct, SIGNAL(triggered()), this, SLOT(SetPointAnnotationFlag()));
 
-	pointEraseAct = new QAction(tr("Erase"), drawActionGroup);
+	actionMap.push_back(ActionEntry("pointAnnotation", pointAnnotationAct));
+
+	pointMoveAct = new QAction(tr("Move"), drawActionGroup);
+	pointMoveAct->setIcon(QIcon(":move_point.png"));
+	pointMoveAct->setShortcut(QKeySequence(tr("Ctrl+T")));
+	pointMoveAct->setToolTip(tr("Mouse dragging moves a cone [Ctrl+T]"));
+	pointMoveAct->setCheckable(true);
+	pointMoveAct->setChecked(false);
+	connect(pointMoveAct, SIGNAL(triggered()), this, SLOT(SetPointMoveFlag()));
+
+	actionMap.push_back(ActionEntry("pointMove", pointMoveAct));
+
+	pointEraseAct = new QAction(tr("Erase S"), drawActionGroup);
 	pointEraseAct->setShortcut(QKeySequence(tr("Ctrl+E")));
     pointEraseAct->setIcon(QIcon(":erase_point.png"));
-    pointEraseAct->setToolTip(tr("Mouse erases cone markers (Ctrl+E)"));
+    pointEraseAct->setToolTip(tr("Mouse click erases a cone marker [Ctrl+E]"));
 	pointEraseAct->setCheckable(true);
 	pointEraseAct->setChecked(false);
     connect(pointEraseAct, SIGNAL(triggered()), this, SLOT(SetPointEraseFlag()));
 
-    undoAct = new QAction(tr("Undo"), this);
+	actionMap.push_back(ActionEntry("pointErase", pointEraseAct));
+
+	areaEraseAct = new QAction(tr("Erase M"), drawActionGroup);
+	areaEraseAct->setShortcut(QKeySequence(tr("Ctrl+W")));
+	areaEraseAct->setIcon(QIcon(":erase.png"));
+	areaEraseAct->setToolTip(tr("Draw a contour with mouse to delete all markers inside [Ctrl+W]"));
+	areaEraseAct->setCheckable(true);
+	areaEraseAct->setChecked(false);
+	connect(areaEraseAct, SIGNAL(triggered()), this, SLOT(SetAreaEraseFlag()));
+
+	actionMap.push_back(ActionEntry("areaErase", areaEraseAct));
+
+	undoAct = new QAction(tr("Undo"), this);
 	undoAct->setShortcut(QKeySequence(tr("Ctrl+Z")));
     undoAct->setIcon(QIcon::fromTheme(":undo.png"));
     undoAct->setShortcuts(QKeySequence::Undo);
-    undoAct->setToolTip(tr("Undo last operation (Ctrl+Z)"));
+    undoAct->setToolTip(tr("Undo last operation [Ctrl+Z]"));
     connect(undoAct, SIGNAL(triggered()), this, SLOT(DoUndo()));
+
+	actionMap.push_back(ActionEntry("undo", undoAct));
 
 	aboutAct = new QAction(tr("About"), this);
 	aboutAct->setIcon(QIcon(":about.png"));
 	connect(aboutAct, SIGNAL(triggered()), this, SLOT(ShowAboutDialog()));
+
+	whatsNewAct = new QAction(tr("What's new?"), this);
+	whatsNewAct->setIcon(QIcon(":help.png"));
+	connect(whatsNewAct, SIGNAL(triggered()), this, SLOT(ShowWhatsNewWindow()));
 
 	helpAct = new QAction(tr("Help"), this);
 	helpAct->setShortcut(QKeySequence(tr("F1")));
 	helpAct->setToolTip(tr("Display help screen (F1)"));
 	helpAct->setIcon(QIcon(":help.png"));
 	connect(helpAct, SIGNAL(triggered()), this, SLOT(ShowHelpWindow()));
+
+	actionMap.push_back(ActionEntry("help", helpAct));
+
+	toggleVisibilityAct = new QAction(tr("Toggle Visibility"), this);
+	toggleVisibilityAct->setCheckable(true);
+	toggleVisibilityAct->setChecked(true);
+	toggleVisibilityAct->setShortcut(QKeySequence(tr("F2")));
+	toggleVisibilityAct->setToolTip(tr("Toggle Cone Glyph Visibility [F2]"));
+	connect(toggleVisibilityAct, SIGNAL(triggered()), this, SLOT(ToggleVisibility()));
+
+	actionMap.push_back(ActionEntry("toggleVisibility", toggleVisibilityAct));
+
+	toggleInterpolationAct = new QAction(tr("Toggle Interpolation"), this);
+	toggleInterpolationAct->setCheckable(true);
+	toggleInterpolationAct->setChecked(true);
+	toggleInterpolationAct->setShortcut(QKeySequence(tr("Ctrl+I")));
+	toggleInterpolationAct->setToolTip(tr("Toggle Image Scale Pixel Interpolation [Ctrl+I]"));
+	connect(toggleInterpolationAct, SIGNAL(triggered()), this, SLOT(ToggleInterpolation()));
+
+	actionMap.push_back(ActionEntry("toggleInterpolation", toggleInterpolationAct));
+
+	nextImageAct = new QAction(tr("Next Image"), this);
+	nextImageAct->setShortcut(QKeySequence(tr("Down")));
+	connect(nextImageAct, SIGNAL(triggered()), this, SLOT(OnNextImage()));
+	prevImageAct = new QAction(tr("Previous Image"), this);
+	prevImageAct->setShortcut(QKeySequence(tr("Up")));
+	connect(prevImageAct, SIGNAL(triggered()), this, SLOT(OnPreviousImage()));
 }
 
 void radMainWindow::createMenus()
@@ -241,11 +328,18 @@ void radMainWindow::createMenus()
 
 	SplitProcessingMenu = menuBar()->addMenu(tr("&Split"));
 	SplitProcessingMenu->addAction(detectConesAct);
+	SplitProcessingMenu->addAction(deleteAllConesAct);
 	SplitProcessingMenu->addSeparator();
+	SplitProcessingMenu->addAction(toggleVisibilityAct);
+	SplitProcessingMenu->addAction(toggleInterpolationAct);
+	SplitProcessingMenu->addSeparator();
+	SplitProcessingMenu->addAction(setHotkeysAct);
 	SplitProcessingMenu->addAction(purgeHistoryAct);
 
 	helpMenu = menuBar()->addMenu(tr("&Help"));
 	helpMenu->addAction(helpAct);
+	helpMenu->addAction(whatsNewAct);
+	helpMenu->addSeparator();
 	helpMenu->addAction(aboutAct);
 }
 
@@ -289,7 +383,9 @@ void radMainWindow::createToolBars()
 	drawToolBar->addSeparator();
 	drawToolBar->addAction(mouseAct);
 	drawToolBar->addAction(pointAnnotationAct);
-    drawToolBar->addAction(pointEraseAct);
+	drawToolBar->addAction(pointMoveAct);
+	drawToolBar->addAction(pointEraseAct);
+	drawToolBar->addAction(areaEraseAct);
 
 	drawToolBar->addSeparator();
 	drawToolBar->addAction(undoAct);
@@ -301,7 +397,7 @@ void radMainWindow::createToolBars()
 	drawToolBar->addSeparator();
 	cbShowGlyphs = new QCheckBox("Show Cone Glyphs");
 	cbShowGlyphs->setChecked(true);
-	connect(cbShowGlyphs, SIGNAL(clicked(bool)), this, SLOT(changeConeGlyphVisibility(bool)));
+	connect(cbShowGlyphs, SIGNAL(clicked(bool)), this, SLOT(onConeGlyphVisibility(bool)));
 
 	lbGlSize = new QLabel("Glyph Size");
 	spGlSize = new QDoubleSpinBox();
@@ -346,7 +442,6 @@ void radMainWindow::createProgressDialog()
 void radMainWindow::createHelpWindow()
 {
 	helpWindow = new QWidget();
-	helpWindow->setWindowTitle(tr("Help on Cone Detection"));
 	helpWindow->setWindowIcon(QIcon(":help.png"));
 	helpLayout = new QVBoxLayout();
 	helpBrowser = new QTextBrowser();
@@ -355,22 +450,16 @@ void radMainWindow::createHelpWindow()
 	helpWindow->setLayout(helpLayout);
 
 	QDir appDir(QCoreApplication::applicationDirPath());
-	QDir helpDir = appDir.absoluteFilePath(tr("Help"));
-	QFileInfo helpFile(helpDir.path(), tr("detect.html"));
+	helpDir.setPath(appDir.absoluteFilePath(tr("Help")));
+	helpFile = QFileInfo(helpDir.path(), tr("detect.html"));
 	if (!helpFile.exists()) {
 		appDir.cdUp();
-		helpDir = appDir.absoluteFilePath(tr("Help"));
+		helpDir.setPath(appDir.absoluteFilePath(tr("Help")));
 		helpFile = QFileInfo(helpDir.path(), tr("detect.html"));
 	}
-	if (helpFile.exists()) {
-		helpBrowser->setSource(QUrl::fromLocalFile(helpFile.filePath()));
-	}
-	else {
-		helpBrowser->setText("Sorry, no help available at this time.");
-	}
 
-	helpWindow->setMinimumSize(screen_width * 2 / 5, screen_height * 3 / 7);
-	helpWindow->move(screen_width / 5, screen_height * 2 / 7);
+	helpWindow->setMinimumSize(screen_width * 55 / 100, screen_height * 50 / 100);
+	helpWindow->move(screen_width * 20 / 100, screen_height * 25 / 100);
 }
 
 void radMainWindow::ShowAboutDialog()
@@ -381,8 +470,57 @@ void radMainWindow::ShowAboutDialog()
 
 void radMainWindow::ShowHelpWindow()
 {
+	helpWindow->setWindowTitle(tr("Help on Cone Detection"));
+	if (helpFile.exists()) {
+		helpBrowser->setSource(QUrl::fromLocalFile(helpFile.filePath()));
+	}
+	else {
+		helpBrowser->setText("Sorry, no help available at this time.");
+	}
 	helpWindow->showNormal();
 	helpWindow->activateWindow();
+}
+
+void radMainWindow::ShowWhatsNewWindow()
+{
+	QFileInfo whatsNewFile(helpDir.path(), tr("whatsnew.html"));
+	if (!whatsNewFile.exists()) {
+		return;
+	}
+	helpWindow->setWindowTitle(tr("What's new in Cone Detection"));
+	helpBrowser->setSource(QUrl::fromLocalFile(whatsNewFile.filePath()));
+	helpWindow->showNormal();
+	helpWindow->activateWindow();
+}
+
+void radMainWindow::OnNextImage()
+{
+	if (SplitFileListWidget->count() == 0) return;
+	int curRow = SplitFileListWidget->currentRow();
+	if (curRow < 0) curRow = 0;
+	else if (curRow + 1 < SplitFileListWidget->count()) ++curRow;
+	if (curRow != SplitFileListWidget->currentRow()) {
+		SplitFileListWidget->setCurrentRow(curRow);
+		SplitFileListWidget->item(curRow)->setSelected(true);
+	}
+}
+void radMainWindow::OnPreviousImage()
+{
+	if (SplitFileListWidget->count() == 0) return;
+	int curRow = SplitFileListWidget->currentRow();
+	if (curRow < 0) curRow = 0;
+	else if (curRow > 0) --curRow;
+	if (curRow != SplitFileListWidget->currentRow()) {
+		SplitFileListWidget->setCurrentRow(curRow);
+		SplitFileListWidget->item(curRow)->setSelected(true);
+	}
+}
+
+
+void radMainWindow::onConeGlyphVisibility(bool v)
+{
+	toggleVisibilityAct->setChecked(v);
+	changeConeGlyphVisibility(v);
 }
 
 void radMainWindow::changeConeGlyphVisibility(bool v)
@@ -412,12 +550,13 @@ void radMainWindow::dropEvent(QDropEvent *e)
 	}
 	decodeFileList(inputNames, splitFileNames, detectionFileNames);
 
-	openSplitImages(splitFileNames);
+	openSplitImages(splitFileNames, true);
 	loadDetections(detectionFileNames);
 }
 
-void radMainWindow::openSplitImages(QStringList & fileNames)
+void radMainWindow::openSplitImages(QStringList & fileNames, bool save_state)
 {
+	RestoreVisibility();
 	if (fileNames.isEmpty()) return;
 
 	ClearSplitFileList();
@@ -434,15 +573,43 @@ void radMainWindow::openSplitImages(QStringList & fileNames)
 		{
 			SplitImageInfor[j].split_images = res;
 			SplitImageInfor[j].split_files.first = fileNames[i].toStdString();
+			SplitImageInfor[j].color_info.reset();
 			++j;
 		}
 	}
 	SplitImageInfor.resize(j);
 
 	UpdateSplitFileList(0);
-
 	SplitFileListWidget->setCurrentRow(0);
 	SplitFileListWidget->item(0)->setSelected(true);
+
+	if (SplitImageInfor.size() > 0) {
+		radBackup back_up;
+		back_up.SetBackupDir(BackupDir);
+
+		for (int id = 0; size_t(id) < SplitImageInfor.size(); id++) {
+			if (!back_up.ReadSplitBackup(SplitImageInfor[id], DetectionSettingPara)) {
+				// First time -- try to open accompanying .csv
+				QFileInfo qimgfi(SplitImageInfor[id].split_files.first.c_str());
+				QDir qimgdir = qimgfi.dir();
+				QString csvfn = qimgfi.completeBaseName() + ".csv";
+				QFileInfo qcsvfi(qimgdir, csvfn);
+				if (qcsvfi.exists()) {
+					csvfn = qcsvfi.canonicalFilePath();
+					FileIO->ReadConeDetections(csvfn.toStdString().c_str(),
+						SplitImageInfor[id].split_edited_detections);
+					LoadDefaultDetectionPara();
+					back_up.WriteBackupResults(SplitImageInfor[id], DetectionSettingPara);
+				}
+			}
+		}
+	}
+
+	if (save_state && SplitImageInfor.size() > 0) {
+		QFileInfo qimgfi(SplitImageInfor[0].split_files.first.c_str());
+		saveDir = qimgfi.dir();
+		saveState();
+	}
 
 	LoadBackupResults(0);
 	LoadSplitFile(0);
@@ -465,7 +632,7 @@ void radMainWindow::openSplitImage()
 
     if ( !fileNames.isEmpty() )
     {
-		loadDir = dialog.directory();
+		saveDir = loadDir = dialog.directory();
 		fileDialogState = dialog.saveState();
 		saveState();
 
@@ -482,8 +649,7 @@ void radMainWindow::saveDetection()
 	QString preferredName;
 	string tmp_str;
 	// cout << SplitFileListWidget->currentItem()->text().toStdString() << std::endl;
-	tmp_str.assign(SplitFileListWidget->currentItem()->text().toStdString());
-	tmp_str = tmp_str + ".csv";
+	tmp_str = SplitImageInfor[SplitFileListWidget->currentRow()].split_files.second + ".csv";
 
 	preferredName = saveDir.filePath(QString::fromStdString(tmp_str));
 
@@ -510,7 +676,8 @@ void radMainWindow::saveDetection()
 		GetCurrentEditing();
 		FileIO->WriteConeDetections(filename.toStdString().c_str(), 
 			SplitImageInfor[SplitFileListWidget->currentRow()].split_edited_detections);
-    }
+		UpdateSplitFileList(false);
+	}
 }
 
 void radMainWindow::saveAllDetections()
@@ -536,14 +703,17 @@ void radMainWindow::saveAllDetections()
 		// fileDialogState = dialog.saveState();
 		saveState();
 
-		pair<QFileInfo, DoublePointArray2D> *todo = new pair<QFileInfo, DoublePointArray2D>[SplitFileListWidget->count()];
+		std::vector<pair<QFileInfo, DoublePointArray2D>> todo;
 		string existing = "";
 		int cnt = 0;
 
 		GetCurrentEditing();
-		for (int row = 0; row < SplitFileListWidget->count(); row++) {
-			string fn = SplitFileListWidget->item(row)->text().toStdString() + ".csv";
+
+		int cur_row = SplitFileListWidget->currentRow();
+		for (int row = 0; size_t(row) < SplitImageInfor.size(); row++) {
+			string fn = SplitImageInfor[row].split_files.second + ".csv";
 			QFileInfo saveFile = QFileInfo(saveDir, QString(fn.c_str()));
+			// std::cout << fn.c_str() << " : " << SplitImageInfor[row].split_edited_detections.size() << std::endl;
 			if (saveFile.exists()) {
 				++cnt;
 				if (cnt <= 10) {
@@ -551,7 +721,10 @@ void radMainWindow::saveAllDetections()
 					existing = existing + fn;
 				}
 			}
-			todo[row] = std::make_pair(saveFile, SplitImageInfor[row].split_edited_detections);
+			else {
+				if (SplitImageInfor[row].split_edited_detections.empty()) continue;
+			}
+			todo.push_back(std::make_pair(saveFile, SplitImageInfor[row].split_edited_detections));
 		}
 
 		if (existing.size() > 0) {
@@ -567,14 +740,14 @@ void radMainWindow::saveAllDetections()
 				existing.clear();
 		}
 		if (existing.size() == 0) {
-			for (int row = 0; row < SplitFileListWidget->count(); row++) {
-				QFileInfo saveFile = todo[row].first;
-				DoublePointArray2D results = todo[row].second;
+			for (pair<QFileInfo, DoublePointArray2D> & svitem : todo) {
+				QFileInfo saveFile = svitem.first;
+				DoublePointArray2D results = svitem.second;
 				FileIO->WriteConeDetections(saveFile.filePath().toStdString().c_str(), results);
 			}
 		}
 
-		delete [] todo;
+		UpdateSplitFileList(false);
 	}
 }
 
@@ -595,8 +768,8 @@ void radMainWindow::loadDetections(QStringList & fileNames)
 			fn.resize(fn.size() - 4);
 		int curRow = -1;
 		// Find an open Split image using file name without extension (.csv)
-		for (int row = 0; row < SplitFileListWidget->count(); row++) {
-			if (fn == SplitFileListWidget->item(row)->text()) {
+		for (int row = 0; size_t(row) < SplitImageInfor.size(); row++) {
+			if (fn == SplitImageInfor[row].split_files.second.c_str()) {
 				curRow = row;
 				break;
 			}
@@ -658,6 +831,7 @@ void radMainWindow::LoadSplitFile(int id)
 	LoadDefaultDetectionPara();
 	LoadBackupResults(id);
 	ImageView->SetSplitImage(SplitImageInfor[id].split_images.first);
+	ImageView->SetColorInfo(SplitImageInfor[id].color_info);
 	ImageView->SetConePoints(SplitImageInfor[id].split_left_detections, SplitImageInfor[id].split_left_detection_scales, 
 		SplitImageInfor[id].split_left_detection_weights, SplitImageInfor[id].split_right_detections, 
 		SplitImageInfor[id].split_right_detection_scales, SplitImageInfor[id].split_right_detection_weights, 
@@ -672,26 +846,26 @@ void radMainWindow::quit()
     close();
 }
 
-void radMainWindow::UpdateSplitFileList(unsigned int old_size)
+void radMainWindow::UpdateSplitFileList(bool newlist)
 {
-	SplitFileListWidget->clear();
-	for (int i=old_size; i<SplitImageInfor.size(); i++)
-	{
-		string str;
-		size_t pos, pos1;
-
-		pos = SplitImageInfor.at(i).split_files.first.rfind(".");
-		pos1 = SplitImageInfor.at(i).split_files.first.rfind("/");
-		if (pos != std::string::npos && pos1 != std::string::npos)
+	if (size_t(SplitFileListWidget->count()) != SplitImageInfor.size())
+		newlist = true;
+	if (newlist) {
+		SplitFileListWidget->clear();
+		for (int i = 0; i < SplitImageInfor.size(); i++)
 		{
-			str.assign(SplitImageInfor.at(i).split_files.first.begin()+pos1+1, 
-				SplitImageInfor.at(i).split_files.first.begin()+pos);
-			SplitImageInfor.at(i).split_files.second = str;
-			SplitFileListWidget->addItem(new QListWidgetItem(str.c_str()));
+			QFileInfo qfi(SplitImageInfor[i].split_files.first.c_str());
+			QString basename = qfi.completeBaseName();
+			SplitImageInfor[i].split_files.second = basename.toStdString();
+			SplitFileListWidget->addItem(new QListWidgetItem(GetListName(SplitImageInfor[i].split_files.first)));
+		}
+	}
+	else {
+		for (int i = 0; i < SplitImageInfor.size(); i++) {
+			SplitFileListWidget->item(i)->setText(GetListName(SplitImageInfor[i].split_files.first));
 		}
 	}
 }
-
 
 void radMainWindow::ClearSplitFileList()
 {
@@ -712,17 +886,21 @@ void radMainWindow::SwitchSplitFile(QListWidgetItem *item, QListWidgetItem*previ
 {
 	int i;
 
-	if (previous)
+	if (previous) {
+		std::string prev = previous->text().mid(1).toStdString();
 		for (i = 0; i < SplitImageInfor.size(); i++) {
-			if (SplitImageInfor.at(i).split_files.second.compare(previous->text().toStdString()) == 0) {
+			if (SplitImageInfor[i].split_files.second.compare(prev) == 0) {
 				ImageView->GetConePoints(SplitImageInfor[i].split_edited_detections);
+				SplitImageInfor[i].color_info = ImageView->GetColorInfo();
 				BackupResults(i);
 			}
 		}
+	}
 	if (item) {
+		std::string curr = item->text().mid(1).toStdString();
 		for (i = 0; i < SplitImageInfor.size(); i++)
 		{
-			if (SplitImageInfor.at(i).split_files.second.compare(item->text().toStdString()) == 0)
+			if (SplitImageInfor[i].split_files.second.compare(curr) == 0)
 			{
 				LoadSplitFile(i);
 			}
@@ -734,13 +912,64 @@ void radMainWindow::SwitchSplitFile(QListWidgetItem *item, QListWidgetItem*previ
 
 void radMainWindow::showDetectionPanel()
 {
+	if (SplitFileListWidget->count() == 0) return;
+
+	RestoreVisibility();
 	DetectionPanel->UpdateControlPanel(DetectionSettingPara);
+
+	int id = SplitFileListWidget->currentRow();
+	QStringList items;
+	QList<int> rows;
+	for (int i = 0; size_t(i) < SplitImageInfor.size(); i++)
+	{
+		items << SplitImageInfor[i].split_files.second.c_str();
+		if (SplitImageInfor[i].split_edited_detections.size() == 0)
+			rows << i;
+	}
+	DetectionPanel->SetItemList(items);
+	DetectionPanel->SetCheckedRows(rows);
+	DetectionPanel->SetHighlightedRow(id);
+
+	if (id >= 0 && size_t(id) < SplitImageInfor.size())
+		LoadBackupResults(id);
+
 	DetectionPanel->show();
+}
+
+void radMainWindow::ToggleVisibility()
+{
+	cbShowGlyphs->toggle();
+	changeConeGlyphVisibility(cbShowGlyphs->isChecked());
+}
+
+void radMainWindow::ToggleInterpolation()
+{
+	GetImageView()->SetInterpolation(toggleInterpolationAct->isChecked());
+	GetImageView()->ResetView(false);
+	saveState();
+}
+
+void radMainWindow::RestoreVisibility()
+{
+	toggleVisibilityAct->setChecked(true);
+	cbShowGlyphs->setChecked(true);
+	changeConeGlyphVisibility(true);
 }
 
 void radMainWindow::purgeHistoryFiles()
 {
 	purgeHistoryDialog->showHistory(BackupDir);
+}
+
+void radMainWindow::selectHotkeys()
+{
+	radHotKeyDialog dlg(this, actionMap);
+	int rc = dlg.exec();
+	if (rc == QDialog::Accepted) {
+		QMap<QString, QString> kmap = dlg.getKeyMap();
+		saveShortcuts(kmap);
+		applyShortcuts(kmap);
+	}
 }
 
 void radMainWindow::DetectSplitImage(unsigned int img_id)
@@ -840,6 +1069,11 @@ void radMainWindow::DetectSplitImage(unsigned int img_id)
 
 void radMainWindow::receiveFinishDetection() {
 	progressDialog->reset();
+	RestoreVisibility();
+
+	if (checkedItems.size() > 0 && checkedItems.indexOf(SplitFileListWidget->currentRow()) < 0) {
+		SplitFileListWidget->setCurrentRow(checkedItems[0]);
+	}
 
 	if (SplitFileListWidget->count() == 0 || SplitFileListWidget->currentRow() < 0
 		|| SplitFileListWidget->currentRow() >= SplitImageInfor.size())
@@ -861,31 +1095,20 @@ void radMainWindow::handleUpdateProgress() {
 	progressDialog->setValue(progressDialog->value() + 1);
 }
 
-void radMainWindow::DetectSplitImage()
+void radMainWindow::DetectSplitImageChecked()
 {
-	//cout << SplitFileListWidget->count() << ", " << SplitFileListWidget->currentRow() << std::endl;
-	if (SplitFileListWidget->count() == 0 || SplitFileListWidget->currentRow() < 0
-		|| SplitFileListWidget->currentRow() >= SplitImageInfor.size())
-		return;
-
-	emit updateProgressText(SplitFileListWidget->item(SplitFileListWidget->currentRow())->text());
-	DetectSplitImage(SplitFileListWidget->currentRow());
-
-}
-
-void radMainWindow::DetectSplitImageAll()
-{
-	if (SplitFileListWidget->count() == 0 || SplitFileListWidget->currentRow() < 0
-		|| SplitFileListWidget->currentRow() >= SplitImageInfor.size())
+	if (SplitFileListWidget->count() == 0 || checkedItems.size() == 0)
 		return;
 	
 	clock_t starttime = clock();
-	for (int i=0; i<SplitImageInfor.size(); i++)
+	for (int ii=0; ii<checkedItems.size(); ii++)
 	{
-		QString txt = SplitFileListWidget->item(i)->text() + "\n";
-		if (i > 0) {
+		int i = checkedItems[ii];
+		QString txt = tr(SplitImageInfor[i].split_files.second.c_str()) + "\n";
+		// QString txt = SplitFileListWidget->item(i)->text() + "\n";
+		if (ii > 0) {
 			clock_t elapsed = clock() - starttime;
-			long e_seconds = long(double(elapsed)*(SplitImageInfor.size() - i) / i / CLOCKS_PER_SEC + 0.5);
+			long e_seconds = long(double(elapsed)*(checkedItems.size() - ii) / ii / CLOCKS_PER_SEC + 0.5);
 			long e_minutes = e_seconds / 60; e_seconds %= 60;
 			long e_hours = e_minutes / 60; e_minutes %= 60;
 			txt.append("Estimated Remaining Time: ");
@@ -902,24 +1125,14 @@ void radMainWindow::DetectSplitImageAll()
 
 }
 
-void radMainWindow::DetectCones()
+void radMainWindow::DetectConesChecked(QList<int> checked)
 {
+	if (checked.size() == 0) return;
 	progressDialog->reset();
-	progressDialog->setMaximum(3);
+	progressDialog->setMaximum(checked.size() * 3);
+	checkedItems = checked;
 	QThread *thread = QThread::create([this] {
-		DetectSplitImage();
-		emit sendFinishDetection();
-	});
-	thread->start();
-	progressDialog->exec();
-}
-
-void radMainWindow::DetectConesAll()
-{
-	progressDialog->reset();
-	progressDialog->setMaximum(SplitImageInfor.size() * 3);
-	QThread *thread = QThread::create([this] {
-		DetectSplitImageAll();
+		DetectSplitImageChecked();
 		emit sendFinishDetection();
 	});
 	thread->start();
@@ -950,35 +1163,120 @@ void radMainWindow::LoadBackupResults(int id)
 {
 	radBackup back_up;
 	back_up.SetBackupDir(BackupDir);
-	back_up.ReadSplitBackup(SplitImageInfor[id], DetectionSettingPara);
 
 	//update rad detection panel
 	DetectionPanel->UpdateControlPanel(DetectionSettingPara);
 }
 
 
-void radMainWindow::SetPointAnnotationFlag()
+void radMainWindow::SetPointMoveFlag()
 {
-	ConeMarkFlag = true;
-	ConeEraseFlag = false;
+	mouseMode = MouseOperation::Move_Point;
 }
 
+void radMainWindow::SetPointAnnotationFlag()
+{
+	mouseMode = MouseOperation::Add_Point;
+}
 
 void radMainWindow::SetPointEraseFlag()
 {
-	ConeMarkFlag = false;
-	ConeEraseFlag = true;
+	mouseMode = MouseOperation::Delete_Point;
 }
 
+void radMainWindow::SetAreaEraseFlag()
+{
+	mouseMode = MouseOperation::Delete_Area;
+}
 
 void radMainWindow::SetMouseFlag()
 {
-	ConeMarkFlag = false;
-	ConeEraseFlag = false;
+	MouseOperation mouseMode = MouseOperation::Normal;
 }
 
 void radMainWindow::DoUndo() { 
-  GetImageView()->DoUndo();
+	GetImageView()->DoUndo();
+}
+
+void radMainWindow::DeleteAllConeMarkers()
+{
+	int cur_idx = SplitFileListWidget->currentRow();
+	if (SplitFileListWidget->count() == 0 || cur_idx < 0 || size_t(cur_idx) >= SplitImageInfor.size())
+		return;
+
+	if (ImageView->GetFeatureCount() == 0)
+		return;
+
+	QMessageBox msgBox;
+	msgBox.setText("You are about to erase all cone markers.\nThis operation cannot be undone.");
+	msgBox.setInformativeText("Do you want to continue?");
+	msgBox.setIcon(QMessageBox::Question);
+	msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+	msgBox.setDefaultButton(QMessageBox::Yes);
+	if (msgBox.exec() == QMessageBox::Yes) {
+		SplitImageInfor[cur_idx].Initialize(false);
+		ImageView->InitializeFeatures();
+		ImageView->ResetView(false);
+		BackupResults(unsigned(cur_idx));
+	}
+}
+
+void radMainWindow::saveShortcuts(QMap<QString, QString> kmap)
+{
+	QJsonObject jobj;
+	QMapIterator<QString, QString> itr(kmap);
+	while (itr.hasNext()) {
+		itr.next();
+		jobj[itr.key()] = itr.value();
+	}
+	QJsonDocument json = QJsonDocument(jobj);
+	QFile fo(shortcutFile.filePath());
+	if (fo.open(QIODevice::WriteOnly)) {
+		fo.write(json.toJson(QJsonDocument::Indented));
+		fo.close();
+	}
+}
+
+QMap<QString, QString> radMainWindow::loadShortcuts()
+{
+	QMap<QString, QString> kmap = defaultHotKeyMap();
+	QFile fi(shortcutFile.filePath());
+	if (fi.open(QIODevice::ReadOnly)) {
+		QJsonDocument json = QJsonDocument::fromJson(fi.readAll());
+		fi.close();
+
+		QJsonObject jobj = json.object();
+		for (ActionEntry &ae : actionMap) {
+			QString & keyId = ae.id;
+			if (jobj[keyId].isString())
+				kmap[keyId] = jobj[keyId].toString();
+		}
+	}
+
+	return kmap;
+}
+
+void radMainWindow::applyShortcuts(QMap<QString, QString> kmap)
+{
+	for (ActionEntry &ae : actionMap) {
+		QString & keyId = ae.id;
+		if (!kmap.contains(keyId)) continue;
+		QAction *act = ae.act;
+		QString keySeq = kmap[keyId];
+		act->setShortcut(keySeq);
+		QString actDescr = act->toolTip();
+		if (!actDescr.isEmpty()) {
+			int pidx = actDescr.indexOf("[");
+			if (pidx >= 0)
+				actDescr.truncate(pidx);
+			if (!keySeq.isEmpty()) {
+				if (!actDescr.endsWith(' '))
+					actDescr.append(" ");
+				actDescr = actDescr + tr("[") + keySeq + tr("]");
+			}
+			act->setToolTip(actDescr);
+		}
+	}
 }
 
 void radMainWindow::saveState() {
@@ -986,6 +1284,8 @@ void radMainWindow::saveState() {
 	jobj["loadDir"] = loadDir.path();
 	jobj["saveDir"] = saveDir.path();
 	jobj["fileDialogState"] = QString(fileDialogState.toBase64());
+	jobj["interpolation"] = ImageView->GetInterpolation();
+	jobj["version"] = QString(ConeDetect_VERSION.c_str());
 	QJsonDocument json = QJsonDocument(jobj);
 
 	// cout << json.toJson(QJsonDocument::Indented).toStdString().c_str() << std::endl;
@@ -1010,5 +1310,33 @@ void radMainWindow::loadState() {
 			saveDir.setPath(jobj["saveDir"].toString());
 		if (jobj["fileDialogState"].isString())
 			fileDialogState = QByteArray::fromBase64(QByteArray(jobj["fileDialogState"].toString().toStdString().c_str()));
+		if (jobj["interpolation"].isBool()) {
+			GetImageView()->SetInterpolation(jobj["interpolation"].toBool());
+			toggleInterpolationAct->setChecked(GetImageView()->GetInterpolation());
+		}
+		if (jobj["version"].isString())
+			lastVersion = jobj["version"].toString();
 	}
+
+	QMap<QString, QString> kmap = loadShortcuts();
+	applyShortcuts(kmap);
+}
+
+static long long decode_version(const char* ver)
+{
+	int mj, mn, mc;
+	if (sscanf(ver, "%d.%d.%d ", &mj, &mn, &mc) != 3)
+		return 0L;
+	return (long long)(mj) * 1000000000L + (long long)(mn) * 1000000L + (long long)(mc);
+}
+
+void radMainWindow::checkWhatsNew()
+{
+	long long cur_ver = decode_version(ConeDetect_VERSION.c_str());
+	long long old_ver = decode_version(lastVersion.toStdString().c_str());
+	// std::cout << "cur_ver = " << cur_ver << " ; old_ver = " << old_ver << std::endl;
+	if (cur_ver != old_ver)
+		saveState();
+	if (cur_ver > old_ver)
+		ShowWhatsNewWindow();
 }

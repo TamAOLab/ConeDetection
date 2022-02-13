@@ -25,6 +25,7 @@
 #include <QRadioButton>
 #include <QSlider>
 #include <QColorDialog>
+#include <QTableWidget>
 #include "raddefinition.h"
 
 class radDetectionPanel : public QDialog
@@ -36,6 +37,13 @@ public:
 	~radDetectionPanel();
 
 	void UpdateControlPanel(ConeDetectionParameters &);
+	void SetItemList(QStringList &items);
+	void SetCheckedRows(QList<int> &rows);
+	void SetHighlightedRow(int row);
+
+protected:
+	virtual void closeEvent(QCloseEvent *event) override;
+	virtual void showEvent(QShowEvent *event) override;
 
 private slots:
 
@@ -44,19 +52,20 @@ private slots:
 	void ChangeScale(double);
 	void ChangeDarkConeDetectionFlag(bool);
 	void ChangeLOGResponse(double);
-	void ClickedDetectCurrent();
-	void ClickedDetectAll();
+	void ClickedDetectChecked();
 	void ClickedRestoreDefaults();
+	void onHeaderClicked(int);
 
 signals:
-	void launchDetectCurrent();
-	void launchDetectAll();
+	void launchDetectChecked(QList<int> checked);
 
 private:
     
 	void CreateInputGroup();
 
-	QVBoxLayout *ViewLayout;
+	QGridLayout *ViewLayout;
+
+	QTableWidget *imageTable;
 
 	QGroupBox *DetectionSetupGroup;
 	QLabel *VotingRadiusLabel;
@@ -64,27 +73,27 @@ private:
 
 	QLabel *GradientMagnitudeLabel;
 	QDoubleSpinBox *GradientMagnitudeInput;
-	// QLabel *VotingThresholdLabel;
-	// QDoubleSpinBox *VotingThresholdInput;
 
 	QLabel *ScaleLabel;
 	QDoubleSpinBox *ScaleInput;
-
-	// QLabel *MergeRadiusLabel;
-	// QSpinBox *MergeRadiusInput;
 
 	QCheckBox *DimConeBox;
 
 	QPushButton *RestoreDefaultButton;
 
-	QLabel *ScaleResponseLabel; // , *ScaleSizeLabel;
-	QDoubleSpinBox *ScaleResponseInput; // , *ScaleSizeInput;
+	QLabel *ScaleResponseLabel;
+	QDoubleSpinBox *ScaleResponseInput;
 	QGridLayout *DetectionSetupLayout;
 
 	QGridLayout *DetectionLaunchLayout;
 	QWidget *DetectionLaunchGroup;
-	QPushButton *LaunchCurrentButton;
-	QPushButton *LaunchAllButton;
+	QPushButton *CancelButton;
+	QPushButton *LaunchDetectCheckedButton;
+
+	QRect dlgeom;
+	bool dlgeomset = false;
+	QFont normal, bold;
+	QList<int> checkedRows;
 };
 
 #endif // radDetectionPanel

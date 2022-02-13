@@ -15,6 +15,9 @@
         <file>draw_point.png</file>
     </qresource>
     <qresource>
+        <file>move_point.png</file>
+    </qresource>
+    <qresource>
         <file>erase.png</file>
     </qresource>
     <qresource>

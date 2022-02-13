@@ -16,6 +16,7 @@
 #include <QProgressDialog>
 #include <QDoubleValidator>
 #include <QTreeWidget>
+#include <QMessageBox>
 #if QT_VERSION >= 0x050000
 #include <QMenu>
 #endif
@@ -25,6 +26,7 @@
 #include "radDetectionPanel.h"
 #include "radbackup.h"
 #include "radPurgeHistoryDialog.h"
+#include "radHotKeyDialog.h"
 
 class QAction;
 class QActionGroup;
@@ -52,11 +54,14 @@ public:
 	void saveState();
 	void loadState();
 
-	bool ConeMarkFlag;
-	bool ConeEraseFlag;
+	MouseOperation mouseMode = MouseOperation::Normal;
 
-	void openSplitImages(QStringList & fileNames);
+	void openSplitImages(QStringList & fileNames, bool save_state=false);
 	void loadDetections(QStringList & fileNames);
+	void NextImage() { OnNextImage(); }
+	void PreviousImage() { OnPreviousImage(); }
+
+	void checkWhatsNew();
 
 protected:
 	virtual void closeEvent(QCloseEvent *event);
@@ -70,19 +75,24 @@ private slots:
 	void loadDetection();
 	void quit();
 
-	void DetectCones();
-	void DetectConesAll();
+	void DetectConesChecked(QList<int> checked);
 	void BackupResults(unsigned int img_id);
 	void showDetectionPanel();
+	void ToggleVisibility();
+	void ToggleInterpolation();
 	void purgeHistoryFiles();
+	void selectHotkeys();
 	void SwitchSplitFile(QListWidgetItem*, QListWidgetItem*);
 	
 	void SetMouseFlag();
 	void SetPointAnnotationFlag();
+	void SetPointMoveFlag();
 	void SetPointEraseFlag();
+	void SetAreaEraseFlag();
 	void DoUndo();
+	void DeleteAllConeMarkers();
 
-	void changeConeGlyphVisibility(bool v);
+	void onConeGlyphVisibility(bool v);
 	void changeConeGlyphSize(double sz);
 
 	void receiveFinishDetection();
@@ -90,6 +100,10 @@ private slots:
 
 	void ShowAboutDialog();
 	void ShowHelpWindow();
+	void ShowWhatsNewWindow();
+
+	void OnNextImage();
+	void OnPreviousImage();
 
 signals:
 	void sendFinishDetection();
@@ -107,7 +121,11 @@ private:
 	void createToolBars();
 	void createProgressDialog();
 	void createHelpWindow();
-    
+
+	void saveShortcuts(QMap<QString, QString> kmap);
+	QMap<QString, QString> loadShortcuts();
+	void applyShortcuts(QMap<QString, QString> kmap);
+
 	QAction *openSplitImageAct;
 
 	QAction *saveDetectionAct;
@@ -115,16 +133,28 @@ private:
 	QAction *loadDetectionAct;
 	QAction *quitAct;
 
+	QAction *nextImageAct;
+	QAction *prevImageAct;
+
 	QAction *detectConesAct;
+	QAction *deleteAllConesAct;
+	QAction *toggleVisibilityAct;
+	QAction *toggleInterpolationAct;
 	QAction *purgeHistoryAct;
+	QAction *setHotkeysAct;
 
 	QAction *mouseAct;
-	QAction *pointAnnotationAct;
+	QAction* pointAnnotationAct;
+	QAction* pointMoveAct;
 	QAction *pointEraseAct;
+	QAction *areaEraseAct;
 	QAction *undoAct;
 
-	QAction *aboutAct;
-	QAction *helpAct;
+	QAction* aboutAct;
+	QAction* whatsNewAct;
+	QAction* helpAct;
+
+	std::vector<ActionEntry> actionMap;
 	
 	QMenu *fileMenu, *saveMenu;
 	QMenu *SplitImageInputMenu;
@@ -162,20 +192,28 @@ private:
 
 	QDir splitHomeDir;
 	QFileInfo splitStateFile;
+	QFileInfo shortcutFile;
 	QByteArray fileDialogState;
 	QDir saveDir;
 	QDir loadDir;
-	string BackupDir;
+	std::string BackupDir;
+	
+	QDir helpDir;
+	QFileInfo helpFile;
+	QString lastVersion;
 
-	void UpdateSplitFileList(unsigned int old_size = 0);
+	void UpdateSplitFileList(bool newlist=true);
 	void ClearSplitFileList();
 	void GetCurrentEditing();
 	void LoadSplitFile(int);
 	
 	void DetectSplitImage(unsigned int img_id);
+	void changeConeGlyphVisibility(bool v);
+	void RestoreVisibility();
 
-	void DetectSplitImage();
-	void DetectSplitImageAll();
+	// void DetectSplitImage();
+	QList<int> checkedItems;
+	void DetectSplitImageChecked();
 
 	void BackupResults();
 	void LoadBackupResults(int id);

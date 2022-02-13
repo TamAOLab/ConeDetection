@@ -56,7 +56,7 @@ public:
 
 	void WriteBackupResults(SplitImageInformation & split_info,
 		ConeDetectionParameters & detection_paras, int features_only=0);
-	void ReadSplitBackup(SplitImageInformation &split_infor, ConeDetectionParameters &detection_paras,
+	bool ReadSplitBackup(SplitImageInformation &split_infor, ConeDetectionParameters &detection_paras,
 		int skip_features=0);
 	inline void SetBackupDir(string str) {BackupDir.assign(str);}
 	bool RemoveDir(const QString &dirName);

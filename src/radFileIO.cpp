@@ -106,35 +106,38 @@ void radFileIO::ExtractNumsFromString(string & input_str, vector<double> & pts, 
 
 void radFileIO::WriteConeDetections(const char *filename, DoublePointArray2D & cone_pts)
 {
-	ofstream myfile(filename);
-
-	if (myfile.is_open())
-	{
-		//output lesion pts
-		for (unsigned int i=0; i<cone_pts.size(); i++)
-			myfile << cone_pts[i][0] << "," << cone_pts[i][1] << std::endl;
-
-		myfile.close();
+	QString qfn(filename);
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+		std::cout << "Unable to save file " << filename << std::endl;
+		return;
 	}
-	else 
-		cout << "Unable to save file";
+	QTextStream myfile(&qf);
+
+	//output lesion pts
+	for (unsigned int i=0; i<cone_pts.size(); i++)
+		myfile << cone_pts[i][0] << "," << cone_pts[i][1] << "\n";
 }
 
 void radFileIO::ReadConeDetections(const char *filename, DoublePointArray2D & cone_pts)
 {
-  ifstream myfile(filename);
-  if (myfile.is_open())
-  {
-    string buff;
+	QString qfn(filename);
+	QFile qf(qfn);
+	if (!qf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+		return;
+	}
+	QTextStream myfile(&qf);
+
     DoublePointType2D point;
     cone_pts.clear();
-    while (myfile) { 
-      if (!std::getline(myfile, buff, ',')) break;
-      point[0] = std::stod(buff);
-      if (!std::getline(myfile, buff)) break;
-      point[1] = std::stod(buff);
-      cone_pts.push_back(point);
-    }
-    myfile.close();
-  }
+	while (!myfile.atEnd())
+	{
+		QString qline = myfile.readLine();
+		if (qline.startsWith("#")) continue;
+		QStringList lst = qline.split(",");
+		if (lst.size() != 2) break;
+		point[0] = std::stod(lst[0].toStdString());
+		point[1] = std::stod(lst[1].toStdString());
+		cone_pts.push_back(point);
+	}
 }
