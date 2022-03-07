@@ -61,6 +61,7 @@ private:
 	bool ShiftDown, MouseScroll;
 	bool MouseIn;
 
+	ColorInfo ci;
 	int img_dims[3];
 	int last_pick_value;
 	int m_idx;
@@ -108,9 +109,12 @@ const double FalseNegativeColor[3] = {255.0/255.0, 255.0/255.0, 51.0/255.0};
 const double SmallDisplacement = -0.01;
 
 struct UndoEntry {
-UndoEntry(bool del, double x, double y, bool more=false) :
-	m_del(del), m_x(x), m_y(y), m_more(more) {}
-	bool m_del;
+	static const int ADD = 0;
+	static const int DEL = 1;
+	static const int IMG = 2;
+	UndoEntry(int del, double x, double y, bool more=false) :
+		m_del(del), m_x(x), m_y(y), m_more(more) {}
+	int m_del;
 	bool m_more;
 	double m_x;
 	double m_y;
@@ -125,6 +129,11 @@ private:
 
 	// Closest distance between two markers
 	double closedist = 3.;
+	double GetCloseSquare() {
+		double _closedist = GetGlyphScale() * 0.5;
+		if (_closedist > closedist) _closedist = closedist;
+		return _closedist * _closedist;
+	}
 
 	vtkSmartPointer<vtkImageData> ImageData;
 	vtkSmartPointer<vtkImageActor> ImageActor;
@@ -167,6 +176,7 @@ public:
 
 	void SetSplitImage(FloatImageType2D::Pointer);
 	void SetColorInfo(ColorInfo ci);
+	void SetColorInfo(double color_level, double color_window);
 	ColorInfo GetColorInfo();
 
 	void SetConePoints(DoublePointArray2D &, vector<float> &, vector<float> &, 
@@ -176,6 +186,7 @@ public:
 	void InitializeView();
 	void InitializeFeatures();
 	void SetConeGlyphVisibility(bool);
+	double GetGlyphScale();
 	void SetGlyphScale(double);
 	bool GetInterpolation() { return interpolationFlag; }
 	void SetInterpolation(bool flag);
@@ -188,7 +199,7 @@ public:
 	void RemoveDetectedFeatures(double, double, double);
 	void EraseAreaMarkers(DoublePointArray2D &);
 	void AddDetectedFeatures(double, double, double);
-	void AddUndoEntry(bool del, double x, double y, bool more=false);
+	void AddUndoEntry(int del, double x, double y, bool more=false);
 	void AddMoveUndoEntry(int idx, double x, double y);
 	void DoUndo();
 	deque< UndoEntry > undoStack;

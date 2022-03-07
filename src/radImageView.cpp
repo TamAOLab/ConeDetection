@@ -166,6 +166,8 @@ void radMouseInteractorStylePP::OnLeftButtonDown()
 		return;
 	}
 	LeftMousedPressed = true;
+	radMainWindow::GetPointer()->GetImageView()->GetImageDimensions(img_dims);
+	ci = radMainWindow::GetPointer()->GetImageView()->GetColorInfo();
 	// std::cout << "AreaEraseFlag = " << radMainWindow::GetPointer()->AreaEraseFlag << std::endl;
 	if (radMainWindow::GetPointer()->mouseMode == MouseOperation::Delete_Point)
     {
@@ -208,7 +210,6 @@ void radMouseInteractorStylePP::OnLeftButtonDown()
 		double picked[3];
 		this->Interactor->GetPicker()->GetPickPosition(picked);
 
-		radMainWindow::GetPointer()->GetImageView()->GetImageDimensions(img_dims);
 		// std::cout << "dims: " << img_dims[0] << " " << img_dims[1] << " " << img_dims[2] << std::endl;
 		// std::cout << "<Down> Picked value: " << picked[0] << " " << picked[1] << " " << picked[2] << ", " << pick_value << std::endl;
 		if (pick_value != 0)
@@ -279,6 +280,14 @@ void radMouseInteractorStylePP::OnMouseMove()
 		if (pick_value != 0) {
 			double picked[3];
 			this->Interactor->GetPicker()->GetPickPosition(picked);
+
+			double xmax = double(img_dims[0]) - 0.2;
+			double ymax = double(img_dims[1]) - 0.2;
+			if (picked[0] < 0.2) picked[0] = 0.2;
+			if (picked[1] < 0.2) picked[1] = 0.2;
+			if (picked[0] > xmax) picked[0] = xmax;
+			if (picked[1] > ymax) picked[1] = ymax;
+
 			radMainWindow::GetPointer()->GetImageView()->UpdateMarkerAt(m_idx, picked[0], picked[1]);
 		}
 	}
@@ -327,8 +336,12 @@ void radMouseInteractorStylePP::OnLeftButtonUp()
 	{
 		radMainWindow::GetPointer()->GetImageView()->AddMoveUndoEntry(m_idx, m_xpos, m_ypos);
 	}
-	else
+	else {
 		vtkInteractorStyleImage::OnLeftButtonUp();
+		ColorInfo _ci = radMainWindow::GetPointer()->GetImageView()->GetColorInfo();
+		if (fabs(_ci.color_level - ci.color_level) > 0.01 || fabs(_ci.color_window - ci.color_window) > 0.01)
+			radMainWindow::GetPointer()->GetImageView()->AddUndoEntry(UndoEntry::IMG, ci.color_level, ci.color_window, false);
+	}
 	LeftMousedPressed = false;
 }
 
@@ -471,6 +484,11 @@ void radImageView::SetColorInfo(ColorInfo ci)
 	ImageActor->GetProperty()->SetColorLevel(ci.color_level);
 	ImageActor->GetProperty()->SetColorWindow(ci.color_window);
 }
+void radImageView::SetColorInfo(double color_level, double color_window)
+{
+	ImageActor->GetProperty()->SetColorLevel(color_level);
+	ImageActor->GetProperty()->SetColorWindow(color_window);
+}
 ColorInfo radImageView::GetColorInfo()
 {
 	ColorInfo ci;
@@ -559,6 +577,11 @@ void radImageView::SetConeGlyphVisibility(bool flag)
 	ConeActor->SetVisibility(flag);
 }
 
+double radImageView::GetGlyphScale()
+{
+	return ConeGlyphSource->GetScale();
+}
+
 void radImageView::SetGlyphScale(double scale)
 {
 	ConeGlyphSource->SetScale(scale);
@@ -612,8 +635,8 @@ void radImageView::UpdateMarkerAt(int idx, double xpos, double ypos)
 
 void radImageView::RemoveDetectedFeatures(double xpos, double ypos, double zpos)
 {
-	// Remove a cone marker if it's close than 3 pix to the mouse
-	double radsq = closedist * closedist;
+	// Remove a cone marker if it's close than XXX pix to the mouse
+	double radsq = GetCloseSquare();
 
 	int nidx = -1;
 	double mindist = 1000000.;
@@ -633,7 +656,7 @@ void radImageView::RemoveDetectedFeatures(double xpos, double ypos, double zpos)
 	if (mindist < radsq)
 	{
 		ConePoints->GetPoint(nidx, pos);
-		AddUndoEntry(true, pos[0], pos[1]);
+		AddUndoEntry(UndoEntry::DEL, pos[0], pos[1]);
 		ConePoints->Initialize();
 		for (int i = 0; i < pts.size(); i++)
 		{
@@ -711,7 +734,7 @@ void radImageView::EraseAreaMarkers(DoublePointArray2D &contour)
 
 	size_t last_del = del_pts.size() - 1;
 	for (size_t i = 0; i < del_pts.size(); i++) {
-		AddUndoEntry(true, del_pts[i][0], del_pts[i][1], i > 0);
+		AddUndoEntry(UndoEntry::DEL, del_pts[i][0], del_pts[i][1], i > 0);
 	}
 
 	ConePoints->Initialize();
@@ -728,8 +751,8 @@ void radImageView::EraseAreaMarkers(DoublePointArray2D &contour)
 
 void radImageView::AddDetectedFeatures(double xpos, double ypos, double zpos)
 {
-	// Don't add a cone marker if it's close than 3 pix to existing one
-	double radsq = closedist * closedist;
+	// Don't add a cone marker if it's close than XXX pix to existing one
+	double radsq = GetCloseSquare();
 	double pos[3];
 	for (int i = 0; i < ConePoints->GetNumberOfPoints(); i++) {
 		ConePoints->GetPoint(i, pos);
@@ -738,7 +761,7 @@ void radImageView::AddDetectedFeatures(double xpos, double ypos, double zpos)
 	}
 
 	ConePoints->InsertPoint(ConePoints->GetNumberOfPoints(), xpos, ypos, -0.01);
-	AddUndoEntry(false, xpos, ypos);
+	AddUndoEntry(UndoEntry::ADD, xpos, ypos);
 	ConePoints->Modified();
 	ConePolydata->Modified();
 	#if VTK_MAJOR_VERSION < 6
@@ -746,7 +769,7 @@ void radImageView::AddDetectedFeatures(double xpos, double ypos, double zpos)
 	#endif
 }
 
-void radImageView::AddUndoEntry(bool del, double x, double y, bool more)
+void radImageView::AddUndoEntry(int del, double x, double y, bool more)
 {
   undoStack.push_back(UndoEntry(del, x, y, more));
   if (undoStack.size() > 500) {
@@ -759,8 +782,8 @@ void radImageView::AddMoveUndoEntry(int idx, double x, double y)
 	double pos[3];
 	ConePoints->GetPoint(idx, pos);
 	if (fabs(pos[0] - x) < 0.0001 && fabs(pos[1] - y) < 0.0001) return;
-	AddUndoEntry(true, x, y);
-	AddUndoEntry(false, pos[0], pos[1], true);
+	AddUndoEntry(UndoEntry::DEL, x, y);
+	AddUndoEntry(UndoEntry::ADD, pos[0], pos[1], true);
 }
 
 void radImageView::DoUndo()
@@ -774,7 +797,7 @@ void radImageView::DoUndo()
 	  UndoEntry entry = undoStack.back();
 	  undoStack.pop_back();
 
-	  if (!entry.m_del) {
+	  if (entry.m_del == UndoEntry::ADD) {
 		  double pos[3];
 		  int del_idx = -1;
 		  DoublePointArray2D pts(ConePoints->GetNumberOfPoints());
@@ -794,8 +817,11 @@ void radImageView::DoUndo()
 			  }
 		  }
 	  }
-	  else {
+	  else if (entry.m_del == UndoEntry::DEL) {
 		  ConePoints->InsertNextPoint(entry.m_x, entry.m_y, -0.01);
+	  }
+	  else if (entry.m_del == UndoEntry::IMG) {
+		  SetColorInfo(entry.m_x, entry.m_y);
 	  }
 	  has_more = entry.m_more;
   } while ((undoStack.size() > 0) && has_more);

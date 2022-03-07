@@ -1,3 +1,4 @@
+#pragma warning(disable : 4996)
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <QtGlobal>
@@ -401,7 +402,7 @@ void radMainWindow::createToolBars()
 
 	lbGlSize = new QLabel("Glyph Size");
 	spGlSize = new QDoubleSpinBox();
-	spGlSize->setRange(0.1, 20);
+	spGlSize->setRange(0.5, 20);
 	spGlSize->setSingleStep(0.5);
 	spGlSize->setValue(6.0);
 	spGlSize->setAlignment(Qt::AlignCenter);
@@ -1191,7 +1192,7 @@ void radMainWindow::SetAreaEraseFlag()
 
 void radMainWindow::SetMouseFlag()
 {
-	MouseOperation mouseMode = MouseOperation::Normal;
+	mouseMode = MouseOperation::Normal;
 }
 
 void radMainWindow::DoUndo() { 
