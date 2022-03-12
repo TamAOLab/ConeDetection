@@ -272,6 +272,16 @@ void radMainWindow::createActions()
 
 	actionMap.push_back(ActionEntry("undo", undoAct));
 
+	voronoiAct = new QAction(tr("Voronoi"), this);
+	voronoiAct->setShortcut(QKeySequence(tr("Ctrl+V")));
+	voronoiAct->setIcon(QIcon(":Voronoi.png"));
+	voronoiAct->setToolTip(tr("Toggle Voronoi diagram display [Ctrl+V]"));
+	voronoiAct->setCheckable(true);
+	voronoiAct->setChecked(false);
+	connect(voronoiAct, SIGNAL(triggered()), this, SLOT(ToggleVoronoi()));
+
+	actionMap.push_back(ActionEntry("voronoi", voronoiAct));
+
 	aboutAct = new QAction(tr("About"), this);
 	aboutAct->setIcon(QIcon(":about.png"));
 	connect(aboutAct, SIGNAL(triggered()), this, SLOT(ShowAboutDialog()));
@@ -396,6 +406,7 @@ void radMainWindow::createToolBars()
 	drawToolBar->addWidget(lbGlSpace);
 
 	drawToolBar->addSeparator();
+	drawToolBar->addAction(voronoiAct);
 	cbShowGlyphs = new QCheckBox("Show Cone Glyphs");
 	cbShowGlyphs->setChecked(true);
 	connect(cbShowGlyphs, SIGNAL(clicked(bool)), this, SLOT(onConeGlyphVisibility(bool)));
@@ -950,6 +961,12 @@ void radMainWindow::ToggleInterpolation()
 	saveState();
 }
 
+void radMainWindow::ToggleVoronoi()
+{
+	GetImageView()->setVoronoi(voronoiAct->isChecked());
+	saveState();
+}
+
 void radMainWindow::RestoreVisibility()
 {
 	toggleVisibilityAct->setChecked(true);
@@ -1286,6 +1303,7 @@ void radMainWindow::saveState() {
 	jobj["saveDir"] = saveDir.path();
 	jobj["fileDialogState"] = QString(fileDialogState.toBase64());
 	jobj["interpolation"] = ImageView->GetInterpolation();
+	jobj["voronoi"] = ImageView->getVoronoi();
 	jobj["version"] = QString(ConeDetect_VERSION.c_str());
 	QJsonDocument json = QJsonDocument(jobj);
 
@@ -1314,6 +1332,10 @@ void radMainWindow::loadState() {
 		if (jobj["interpolation"].isBool()) {
 			GetImageView()->SetInterpolation(jobj["interpolation"].toBool());
 			toggleInterpolationAct->setChecked(GetImageView()->GetInterpolation());
+		}
+		if (jobj["voronoi"].isBool()) {
+			GetImageView()->setVoronoi(jobj["voronoi"].toBool());
+			voronoiAct->setChecked(GetImageView()->getVoronoi());
 		}
 		if (jobj["version"].isString())
 			lastVersion = jobj["version"].toString();

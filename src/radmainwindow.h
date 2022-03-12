@@ -80,6 +80,7 @@ private slots:
 	void showDetectionPanel();
 	void ToggleVisibility();
 	void ToggleInterpolation();
+	void ToggleVoronoi();
 	void purgeHistoryFiles();
 	void selectHotkeys();
 	void SwitchSplitFile(QListWidgetItem*, QListWidgetItem*);
@@ -149,6 +150,7 @@ private:
 	QAction *pointEraseAct;
 	QAction *areaEraseAct;
 	QAction *undoAct;
+	QAction* voronoiAct;
 
 	QAction* aboutAct;
 	QAction* whatsNewAct;

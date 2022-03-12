@@ -17,6 +17,7 @@
 #include <vector>
 #include <deque>
 #include "radimgfunc.h"
+#include "radVoronoi.h"
 
 #include <vtkRenderer.h>
 #include <vtkProperty.h>
@@ -124,8 +125,9 @@ class radImageView
 {
 private:
 	
-	bool ImageAddFlag;
-	bool interpolationFlag;
+	bool ImageAddFlag = false;
+	bool interpolationFlag = false;
+	bool voronoiFlag = false;
 
 	// Closest distance between two markers
 	double closedist = 3.;
@@ -145,6 +147,13 @@ private:
 	vtkSmartPointer<vtkPolyDataMapper> InteractiveContourMapper;
 	vtkSmartPointer<vtkActor> InteractiveContourActor;
 	void DrawInteractiveContours();
+
+	vtkSmartPointer<vtkPoints> VoronoiContourPoints;
+	vtkSmartPointer<vtkCellArray> VoronoiContourCells;
+	vtkSmartPointer<vtkPolyData> VoronoiContourPolydata;
+	vtkSmartPointer<vtkPolyDataMapper> VoronoiContourMapper;
+	vtkSmartPointer<vtkActor> VoronoiContourActor;
+	void DrawVoronoiContours();
 
 	vtkSmartPointer<vtkPoints> ConePoints;
 	vtkSmartPointer<vtkPolyData> ConePolydata;
@@ -190,6 +199,8 @@ public:
 	void SetGlyphScale(double);
 	bool GetInterpolation() { return interpolationFlag; }
 	void SetInterpolation(bool flag);
+	bool getVoronoi() { return voronoiFlag; }
+	void setVoronoi(bool flag);
 	
 	int GetFeatureCount() {
 		return ConePoints->GetNumberOfPoints();
@@ -204,7 +215,10 @@ public:
 	void DoUndo();
 	deque< UndoEntry > undoStack;
 
+	void updateVoronoiDiagram();
+
 	void SetInteractiveContours(DoublePointArray2D &, bool ending_flag = false);
+	void SetVoronoiContours(std::vector< DoublePointArray2D>& contours);
 };
 
 #endif // radImageView_H

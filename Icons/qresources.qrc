@@ -45,6 +45,9 @@
         <file>undo.png</file>
     </qresource>
     <qresource>
+        <file>Voronoi.png</file>
+    </qresource>
+    <qresource>
         <file>open.png</file>
     </qresource>
     <qresource>

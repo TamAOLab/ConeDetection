@@ -335,6 +335,7 @@ void radMouseInteractorStylePP::OnLeftButtonUp()
 		LeftMousedPressed && m_idx >= 0)
 	{
 		radMainWindow::GetPointer()->GetImageView()->AddMoveUndoEntry(m_idx, m_xpos, m_ypos);
+		radMainWindow::GetPointer()->GetImageView()->updateVoronoiDiagram();
 	}
 	else {
 		vtkInteractorStyleImage::OnLeftButtonUp();
@@ -427,17 +428,35 @@ void radImageView::DrawInteractiveContours()
 	//=============================================================================================
 }
 
+void radImageView::DrawVoronoiContours()
+{
+	//=============== Edges of the Voronoi diagram =========================
+	VoronoiContourPoints = vtkSmartPointer<vtkPoints>::New();
+	VoronoiContourCells = vtkSmartPointer<vtkCellArray>::New();
+	VoronoiContourPolydata = vtkSmartPointer<vtkPolyData>::New();
+	VoronoiContourPolydata->SetPoints(VoronoiContourPoints);
+	VoronoiContourPolydata->SetLines(VoronoiContourCells);
+	VoronoiContourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+	VoronoiContourMapper->SetInputData(VoronoiContourPolydata);
+	VoronoiContourMapper->ScalarVisibilityOff();
+	VoronoiContourActor = vtkSmartPointer<vtkActor>::New();
+	VoronoiContourActor->SetMapper(VoronoiContourMapper);
+	VoronoiContourActor->GetProperty()->SetColor(0., 196. / 255.0, 196. / 255.0);
+	VoronoiContourActor->GetProperty()->SetLineWidth(1.5);
+}
 
 radImageView::radImageView()
 {
 	DrawInputImage();
 	DrawConeDetections();
 	DrawInteractiveContours();
+	DrawVoronoiContours();
 
 	ImageRender = vtkSmartPointer<vtkRenderer>::New();
 	ImageRender->SetBackground( 0.0f, 0.0f, 0.0f );
 	ImageRender->AddActor(ConeActor);
 	ImageRender->AddActor(InteractiveContourActor);
+	ImageRender->AddActor(VoronoiContourActor);
 
 	ImageStyle = vtkSmartPointer<radMouseInteractorStylePP>::New();
 	RenderWin = vtkSmartPointer<vtkRenderWindow>::New();
@@ -517,6 +536,12 @@ void radImageView::InitializeFeatures()
 	InteractiveContourCells->Modified();
 	InteractiveContourPolydata->Modified();
 
+	VoronoiContourPoints->Initialize();
+	VoronoiContourCells->Initialize();
+	VoronoiContourPoints->Modified();
+	VoronoiContourCells->Modified();
+	VoronoiContourPolydata->Modified();
+
 	undoStack.clear();
 }
 
@@ -557,6 +582,8 @@ void radImageView::SetConePoints(DoublePointArray2D & left_pts, vector<float> & 
 
 	ConePolydata->Modified();
 	ConeGlyph->Update();
+
+	updateVoronoiDiagram();
 }
 
 void radImageView::GetConePoints(DoublePointArray2D & edited_pts)
@@ -598,6 +625,12 @@ void radImageView::SetInterpolation(bool flag)
 	}
 }
 
+void radImageView::setVoronoi(bool flag)
+{
+	voronoiFlag = flag;
+	updateVoronoiDiagram();
+}
+
 int radImageView::FindMarker(double *pxpos, double *pypos)
 {
 	double radsq = closedist * closedist;
@@ -630,6 +663,7 @@ void radImageView::UpdateMarkerAt(int idx, double xpos, double ypos)
 	ConePoints->SetPoint(idx, xpos, ypos, -0.01);
 	ConePoints->Modified();
 	ConePolydata->Modified();
+	//updateVoronoiDiagram();
 	RenderWin->Render();
 }
 
@@ -667,6 +701,7 @@ void radImageView::RemoveDetectedFeatures(double xpos, double ypos, double zpos)
 
 		ConePoints->Modified();
 		ConePolydata->Modified();
+		updateVoronoiDiagram();
 #if VTK_MAJOR_VERSION < 6
 		ConePolydata->Update();
 #endif
@@ -746,6 +781,7 @@ void radImageView::EraseAreaMarkers(DoublePointArray2D &contour)
 	}
 
 	ConePolydata->Modified();
+	updateVoronoiDiagram();
 	ConeGlyph->Update();
 }
 
@@ -764,6 +800,7 @@ void radImageView::AddDetectedFeatures(double xpos, double ypos, double zpos)
 	AddUndoEntry(UndoEntry::ADD, xpos, ypos);
 	ConePoints->Modified();
 	ConePolydata->Modified();
+	updateVoronoiDiagram();
 	#if VTK_MAJOR_VERSION < 6
 	ConePolydata->Update();
 	#endif
@@ -828,6 +865,7 @@ void radImageView::DoUndo()
 
   ConePoints->Modified();
   ConePolydata->Modified();
+  updateVoronoiDiagram();
 #if VTK_MAJOR_VERSION < 6
   ConePolydata->Update();
 #endif
@@ -858,5 +896,44 @@ void radImageView::SetInteractiveContours(DoublePointArray2D &pts, bool ending_f
 		InteractiveContourPoints->Modified();
 		InteractiveContourCells->Modified();
 		InteractiveContourPolydata->Modified();
+	}
+}
+
+void radImageView::SetVoronoiContours(std::vector<DoublePointArray2D>& contours)
+{
+	VoronoiContourPoints->Initialize();
+	VoronoiContourCells->Initialize();
+
+	for (unsigned int i = 0; size_t(i) < contours.size(); i++) {
+		DoublePointArray2D& contour = contours[i];
+		VoronoiContourCells->InsertNextCell(contour.size() + 1);
+		unsigned int current_pt_num = VoronoiContourPoints->GetNumberOfPoints();
+		for (unsigned int j = 0; size_t(j) < contour.size(); j++) {
+			DoublePointType2D& pt = contour[j];
+			VoronoiContourPoints->InsertNextPoint(pt[0], pt[1], SmallDisplacement);
+			VoronoiContourCells->InsertCellPoint(j + current_pt_num);
+		}
+		VoronoiContourCells->InsertCellPoint(current_pt_num);
+	}
+
+	VoronoiContourPoints->Modified();
+	VoronoiContourCells->Modified();
+	VoronoiContourPolydata->Modified();
+	RenderWin->Render();
+}
+
+void radImageView::updateVoronoiDiagram()
+{
+	if (voronoiFlag) {
+		DoublePointArray2D markers;
+		GetConePoints(markers);
+		int img_dims[3];
+		GetImageDimensions(img_dims);
+		std::vector<DoublePointArray2D> contours = VoronoiEdges(markers, img_dims[0], img_dims[1]);
+		SetVoronoiContours(contours);
+	}
+	else {
+		std::vector<DoublePointArray2D> contours;
+		SetVoronoiContours(contours);
 	}
 }
